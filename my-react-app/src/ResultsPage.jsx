@@ -236,8 +236,8 @@ export default function ResultsPage({ emails, profile, onBack }) {
       </div>
 
       <div className="results-actions">
-        <button className="btn-secondary" id="btn-back-profile" onClick={onBack}>← Edit Profile</button>
-        <button className="btn-primary" id="btn-start-over" onClick={() => window.location.reload()}>
+        <button className="btn-secondary" id="btn-back-profile" onClick={() => onBack(1)}>← Edit Profile</button>
+        <button className="btn-primary" id="btn-start-over" onClick={() => onBack(2)}>
           🔄 Start Over with New Emails
         </button>
       </div>

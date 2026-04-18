@@ -253,7 +253,7 @@ export default function InboxPage({ onNext, onEmailsReady }) {
               )}
               {scanned && (
                 <button className="btn-primary" id="btn-next-profile-custom" onClick={onNext}>
-                  Next: My Profile →
+                  ✨ Get Recommendations →
                 </button>
               )}
             </div>

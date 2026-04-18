@@ -39,7 +39,7 @@ export default function App() {
         <ResultsPage
           emails={emails}
           profile={profile}
-          onBack={() => goTo(2)}
+          onBack={(stepNum = 2) => goTo(stepNum)}
         />
       )}
     </div>
