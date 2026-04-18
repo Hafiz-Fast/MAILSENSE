@@ -11,6 +11,7 @@ def home(request):
         {
             "message": "API connected successfully.",
             "endpoints": {
+                "classify_email": "/api/classify_email/",
                 "oauth_start": "/api/gmail/oauth/start/",
                 "oauth_callback": "/api/gmail/oauth/callback/",
                 "extract": "/api/gmail/opportunities/extract/",

@@ -1,5 +1,11 @@
 __pycache__/
 *.py[cod]
+*.pyc
 
 ai_hackthon_backend/credentials.json
 ai_hackthon_backend/db.sqlite3
+.env
+.env.local
+node_modules/
+dist/
+db.sqlite3
