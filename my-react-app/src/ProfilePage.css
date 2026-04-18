@@ -1,0 +1,191 @@
+.profile-form-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.form-section {
+  padding: 1.75rem;
+  animation: fadeInUp 0.4s ease both;
+}
+.form-section:nth-child(2) { animation-delay: 0.08s; }
+.form-section:nth-child(3) { animation-delay: 0.16s; }
+
+.section-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--gray-100);
+}
+
+.section-icon {
+  font-size: 1.5rem;
+  background: var(--gray-50);
+  border: 1px solid var(--gray-200);
+  border-radius: var(--radius-md);
+  padding: 0.5rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.section-header h2 {
+  font-size: 1.0625rem;
+  font-weight: 800;
+  color: var(--gray-900);
+  letter-spacing: -0.02em;
+  margin-bottom: 0.1875rem;
+}
+.section-header p {
+  font-size: 0.8125rem;
+  color: var(--gray-500);
+}
+
+.form-fields { display: flex; flex-direction: column; gap: 1.125rem; }
+
+.form-row-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+@media (max-width: 560px) { .form-row-2 { grid-template-columns: 1fr; } }
+
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4375rem;
+}
+
+.form-field label {
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--gray-700);
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.required { color: var(--danger); }
+
+.field-hint {
+  font-size: 0.6875rem;
+  font-weight: 500;
+  color: var(--gray-400);
+  margin-left: auto;
+}
+
+.form-field input,
+.form-field select,
+.form-field textarea {
+  padding: 0.71875rem 0.9375rem;
+  border: 1.5px solid var(--gray-200);
+  border-radius: var(--radius);
+  font-size: 0.9375rem;
+  font-family: inherit;
+  color: var(--gray-900);
+  background: var(--gray-50);
+  transition: var(--transition);
+  resize: vertical;
+}
+
+.form-field input:focus,
+.form-field select:focus,
+.form-field textarea:focus {
+  outline: none;
+  border-color: var(--primary);
+  background: white;
+  box-shadow: var(--shadow-glow);
+}
+
+.form-field input.error,
+.form-field select.error,
+.form-field textarea.error {
+  border-color: var(--danger);
+  background: var(--danger-bg);
+}
+
+.err-msg {
+  font-size: 0.75rem;
+  color: var(--danger);
+  font-weight: 600;
+}
+
+/* CGPA */
+.cgpa-input-wrap { display: flex; flex-direction: column; gap: 0.5rem; }
+.cgpa-bar {
+  height: 5px;
+  background: var(--gray-200);
+  border-radius: 99px;
+  overflow: hidden;
+}
+.cgpa-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--primary), var(--secondary));
+  border-radius: 99px;
+  transition: width 0.4s ease;
+}
+
+/* Type Chips */
+.type-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.type-chip {
+  padding: 0.4375rem 0.875rem;
+  border-radius: var(--radius-full);
+  border: 1.5px solid var(--gray-200);
+  background: var(--gray-50);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--gray-600);
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.type-chip:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.type-chip.selected {
+  background: linear-gradient(135deg, var(--primary), var(--secondary));
+  border-color: transparent;
+  color: white;
+  box-shadow: 0 2px 8px rgba(99,102,241,0.35);
+}
+
+/* Financial Toggle */
+.financial-toggle-field {}
+.toggle-row { display: flex; gap: 0.625rem; flex-wrap: wrap; }
+
+.toggle-btn {
+  padding: 0.5rem 1rem;
+  border-radius: var(--radius);
+  border: 1.5px solid var(--gray-200);
+  background: var(--gray-50);
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--gray-600);
+  cursor: pointer;
+  transition: var(--transition);
+}
+.toggle-btn:hover { border-color: var(--primary); color: var(--primary); }
+.toggle-btn.active {
+  background: var(--success-bg);
+  border-color: rgba(16,185,129,0.4);
+  color: var(--success);
+}
+
+/* Actions */
+.profile-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 1.5rem;
+  gap: 1rem;
+  flex-wrap: wrap;
+  animation: fadeInUp 0.4s ease 0.2s both;
+}
