@@ -39,27 +39,32 @@ Extract the details and return ONLY a valid JSON object matching this schema:
 }}
 """
             api_key = settings.GEMINI_API_KEY
-            gemini_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={api_key}"
+            # Robust fallback: Try these models in order until one works
+            models_to_try = ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-1.5-flash", "gemini-pro"]
+            last_error = ""
 
-            payload = {
-                "contents": [{"parts": [{"text": prompt}]}],
-                "generationConfig": {
-                    "response_mime_type": "application/json",
-                    "temperature": 0.1,
+            for model_name in models_to_try:
+                gemini_url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
+                payload = {
+                    "contents": [{"parts": [{"text": prompt}]}],
+                    "generationConfig": { "temperature": 0.1 }
                 }
-            }
+                
+                print(f"🔄 Trying model: {model_name}...")
+                response = requests.post(gemini_url, json=payload)
+                
+                if response.status_code == 200:
+                    print(f"✅ SUCCESS with {model_name}")
+                    gemini_data = response.json()
+                    result_text = gemini_data['candidates'][0]['content']['parts'][0]['text']
+                    if result_text.startswith("```json"):
+                        result_text = result_text.strip("`").replace("json\n", "", 1).strip()
+                    return JsonResponse(json.loads(result_text), safe=False)
+                else:
+                    print(f"⚠️ {model_name} failed with status {response.status_code}")
+                    last_error = response.text
 
-            response = requests.post(gemini_url, json=payload)
-            if response.status_code == 200:
-                gemini_data = response.json()
-                result_text = gemini_data['candidates'][0]['content']['parts'][0]['text']
-                # Gemini sometimes wraps JSON in markdown blocks like ```json ... ```
-                if result_text.startswith("```json"):
-                    result_text = result_text.strip("`").replace("json\n", "", 1).strip()
-                return JsonResponse(json.loads(result_text), safe=False)
-            else:
-                print(f"❌ GEMINI API ERROR: {response.status_code} - {response.text}")
-                return JsonResponse({"error": "Failed to connect to Gemini API", "details": response.text}, status=500)
+            return JsonResponse({"error": "All Gemini models failed", "details": last_error}, status=500)
 
         except Exception as e:
             print(f"❌ BACKEND EXCEPTION: {str(e)}")
