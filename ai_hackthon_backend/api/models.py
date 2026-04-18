@@ -1,3 +1,1 @@
-from django.db import models
-
-# Create your models here.
+# This file has been split into the models/ directory. Do not write code here.
