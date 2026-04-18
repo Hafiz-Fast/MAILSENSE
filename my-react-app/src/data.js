@@ -139,65 +139,61 @@ export const DEMO_EMAILS = [
 export const OPPORTUNITY_IDS = [2, 4, 6, 8, 10, 12, 14]; // which emails are real opportunities
 
 export const analyzeOpportunities = (emails, profile) => {
-  const opportunities = emails.filter(e => OPPORTUNITY_IDS.includes(e.id) || e._custom);
+  // Only process emails that are opportunities (either flagged by AI, or fallback to OPPORTUNITY_IDS)
+  const opportunities = emails.filter(e => {
+    if (e.aiData) return e.aiData.isOpportunity;
+    return OPPORTUNITY_IDS.includes(e.id) || e._custom;
+  });
 
   const scored = opportunities.map(email => {
     let score = 0;
     let reasons = [];
     let extracted = {};
 
-    // --- Extract fields from body ---
-    const body = email.body || '';
+    const ai = email.aiData;
+    const bodyL = (email.body || '').toLowerCase();
 
-    // Deadline
-    const deadlineMatch = body.match(/Deadline[:\s]+([^\n]+)/i);
-    extracted.deadline = deadlineMatch ? deadlineMatch[1].trim() : 'Not specified';
-
-    // Contact
-    const emailMatch = body.match(/[\w.-]+@[\w.-]+\.\w+/g);
-    const phoneMatch = body.match(/\d[\d\s-]{8,}/g);
-    extracted.contact = [
-      ...(emailMatch ? emailMatch.filter(e => e !== email.from) : []),
-      ...(phoneMatch ? phoneMatch.slice(0,1) : [])
-    ].join(' | ') || email.from;
-
-    // Application link
-    const linkMatch = body.match(/Apply[:\s]+(https?:\/\/\S+|\S+\.\w+\/\S*)/i);
-    extracted.applyLink = linkMatch ? linkMatch[1] : null;
-
-    // Required docs
-    const docsSection = body.match(/Required[^:]*:([\s\S]*?)(?:\n\n|\nDeadline|\nApply|\nContact|$)/i);
-    if (docsSection) {
-      extracted.requiredDocs = docsSection[1].trim().split('\n').map(s => s.replace(/^[-•*]\s*/, '').trim()).filter(Boolean);
+    if (ai) {
+      // Use AI extracted data
+      extracted = { ...ai.extracted, type: ai.type };
+      if (ai.confidence > 80) score += 10;
+      if (ai.reasoning) reasons.push(`AI Analysis: ${ai.reasoning}`);
     } else {
-      extracted.requiredDocs = [];
-    }
+      // --- Fallback Regex Extraction ---
+      const body = email.body || '';
+      const deadlineMatch = body.match(/Deadline[:\s]+([^\n]+)/i);
+      extracted.deadline = deadlineMatch ? deadlineMatch[1].trim() : 'Not specified';
 
-    // Eligibility
-    const eligSection = body.match(/Eligibility[^:]*:([\s\S]*?)(?:\n\n|\nBenefits|\nWhat you get|\nRequired|\nDeadline|$)/i);
-    if (eligSection) {
-      extracted.eligibility = eligSection[1].trim().split('\n').map(s => s.replace(/^[-•*]\s*/, '').trim()).filter(Boolean);
-    } else {
-      extracted.eligibility = [];
-    }
+      const emailMatch = body.match(/[\w.-]+@[\w.-]+\.\w+/g);
+      const phoneMatch = body.match(/\d[\d\s-]{8,}/g);
+      extracted.contact = [
+        ...(emailMatch ? emailMatch.filter(e => e !== email.from) : []),
+        ...(phoneMatch ? phoneMatch.slice(0,1) : [])
+      ].join(' | ') || email.from;
 
-    // Opportunity type
-    const subj = email.subject.toLowerCase();
-    const bodyL = body.toLowerCase();
-    if (subj.includes('scholarship') || bodyL.includes('scholarship')) extracted.type = 'Scholarship';
-    else if (subj.includes('internship') || bodyL.includes('internship')) extracted.type = 'Internship';
-    else if (subj.includes('research') || bodyL.includes('research fellowship')) extracted.type = 'Research Fellowship';
-    else if (subj.includes('startup') || bodyL.includes('accelerator') || bodyL.includes('founders')) extracted.type = 'Startup Program';
-    else if (subj.includes('competition') || bodyL.includes('contest') || subj.includes('icpc')) extracted.type = 'Competition';
-    else extracted.type = 'Opportunity';
+      const linkMatch = body.match(/Apply[:\s]+(https?:\/\/\S+|\S+\.\w+\/\S*)/i);
+      extracted.applyLink = linkMatch ? linkMatch[1] : null;
+
+      const docsSection = body.match(/Required[^:]*:([\s\S]*?)(?:\n\n|\nDeadline|\nApply|\nContact|$)/i);
+      extracted.requiredDocs = docsSection ? docsSection[1].trim().split('\n').map(s => s.replace(/^[-•*]\s*/, '').trim()).filter(Boolean) : [];
+
+      const eligSection = body.match(/Eligibility[^:]*:([\s\S]*?)(?:\n\n|\nBenefits|\nWhat you get|\nRequired|\nDeadline|$)/i);
+      extracted.eligibility = eligSection ? eligSection[1].trim().split('\n').map(s => s.replace(/^[-•*]\s*/, '').trim()).filter(Boolean) : [];
+
+      const subj = email.subject.toLowerCase();
+      if (subj.includes('scholarship') || bodyL.includes('scholarship')) extracted.type = 'Scholarship';
+      else if (subj.includes('internship') || bodyL.includes('internship')) extracted.type = 'Internship';
+      else if (subj.includes('research') || bodyL.includes('research fellowship')) extracted.type = 'Research Fellowship';
+      else if (subj.includes('startup') || bodyL.includes('accelerator') || bodyL.includes('founders')) extracted.type = 'Startup Program';
+      else if (subj.includes('competition') || bodyL.includes('contest') || subj.includes('icpc')) extracted.type = 'Competition';
+      else extracted.type = 'Opportunity';
+    }
 
     // --- Score against profile ---
     if (profile) {
-      // Match preferred types
       if (profile.preferredTypes?.includes(extracted.type)) { score += 30; reasons.push(`Matches your preferred type: ${extracted.type}`); }
 
-      // CGPA match
-      const cgpaMatch = body.match(/CGPA[^0-9]*([0-9.]+)/i);
+      const cgpaMatch = (email.body || '').match(/CGPA[^0-9]*([0-9.]+)/i);
       if (cgpaMatch) {
         const required = parseFloat(cgpaMatch[1]);
         const userCgpa = parseFloat(profile.cgpa);
@@ -207,31 +203,26 @@ export const analyzeOpportunities = (emails, profile) => {
         }
       } else { score += 10; }
 
-      // Skills match
       if (profile.skills) {
         const skills = profile.skills.toLowerCase().split(/[,\s]+/);
-        const bodyWords = bodyL;
-        const matchedSkills = skills.filter(s => s.length > 2 && bodyWords.includes(s));
+        const matchedSkills = skills.filter(s => s.length > 2 && bodyL.includes(s));
         if (matchedSkills.length > 0) {
           score += matchedSkills.length * 8;
           reasons.push(`Your skills match: ${matchedSkills.slice(0,3).join(', ')}`);
         }
       }
 
-      // Financial need
       if (profile.financialNeed && (extracted.type === 'Scholarship' || bodyL.includes('stipend') || bodyL.includes('paid'))) {
         score += 15;
-        reasons.push('Includes financial benefit (aligns with your financial need)');
+        reasons.push('Includes financial benefit');
       }
 
-      // Location
       if (profile.locationPref && bodyL.includes(profile.locationPref.toLowerCase())) {
         score += 10;
         reasons.push(`Based in your preferred location: ${profile.locationPref}`);
       }
 
-      // Deadline urgency
-      if (extracted.deadline !== 'Not specified') {
+      if (extracted.deadline && extracted.deadline !== 'Not specified') {
         const dStr = extracted.deadline.replace(/.*?(\w+ \d+,?\s*\d{4}).*/, '$1');
         const d = new Date(dStr);
         const daysLeft = Math.ceil((d - new Date()) / 86400000);
@@ -243,14 +234,13 @@ export const analyzeOpportunities = (emails, profile) => {
         }
       }
 
-      // Experience
       if (profile.experience && bodyL.includes('experience')) {
         score += 5;
         reasons.push('Your past experience is relevant');
       }
     } else {
       score = Math.floor(Math.random() * 40) + 50;
-      reasons = ['Complete your profile for personalized scoring'];
+      if (!ai) reasons = ['Complete your profile for personalized scoring'];
     }
 
     if (reasons.length === 0) reasons = ['Matches your student status and field'];

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { DEMO_EMAILS, OPPORTUNITY_IDS } from './data';
+import { classifyEmail } from './ai';
 import './InboxPage.css';
 
 const OPPORTUNITY_TAG = {
@@ -11,6 +12,7 @@ const OPPORTUNITY_TAG = {
 };
 
 export default function InboxPage({ onNext, onEmailsReady }) {
+  const [apiKey, setApiKey] = useState(() => import.meta.env.VITE_GEMINI_API_KEY || localStorage.getItem('GEMINI_API_KEY') || '');
   const [mode, setMode] = useState(null); // null | 'demo' | 'type' | 'inbox'
 
   // Shared email count (1–15), default 10
@@ -48,14 +50,26 @@ export default function InboxPage({ onNext, onEmailsReady }) {
   const runScan = async (emails) => {
     setRunning(true);
     setScanned(false);
+    
+    let scannedEmails = [];
+
     for (let i = 0; i < emails.length; i++) {
       setScanIndex(i);
-      await new Promise(r => setTimeout(r, 280));
+      let aiData = null;
+      if (apiKey) {
+        // Use real AI
+        aiData = await classifyEmail(emails[i], apiKey);
+      } else {
+        // Fallback simulated delay
+        await new Promise(r => setTimeout(r, 280));
+      }
+      scannedEmails.push({ ...emails[i], aiData });
     }
+    
     setScanIndex(-1);
     setRunning(false);
     setScanned(true);
-    onEmailsReady(emails);
+    onEmailsReady(scannedEmails);
   };
 
   const handleDemoScan = () => runScan(activeEmails);
@@ -127,8 +141,11 @@ export default function InboxPage({ onNext, onEmailsReady }) {
           <div className="inbox-layout">
             <div className="email-list">
               {activeEmails.map((email, i) => {
-                const isOpp = OPPORTUNITY_IDS.includes(email.id);
-                const tag = OPPORTUNITY_TAG[email.id];
+                const aiData = email.aiData;
+                // If we ran AI, use its determination. Otherwise fallback to hardcoded IDs.
+                const isOpp = aiData ? aiData.isOpportunity : OPPORTUNITY_IDS.includes(email.id);
+                const typeLabel = aiData ? aiData.type : OPPORTUNITY_TAG[email.id]?.type;
+                
                 const isScanning = running && scanIndex === i;
                 const wasScanned = scanned || (running && scanIndex > i);
                 return (
@@ -150,8 +167,8 @@ export default function InboxPage({ onNext, onEmailsReady }) {
                       </div>
                     </div>
                     <div className="email-row-right">
-                      {wasScanned && isOpp && tag && (
-                        <span className={`badge ${tag.color} badge-opp`}>{tag.type}</span>
+                      {wasScanned && isOpp && typeLabel && (
+                        <span className="badge badge-success badge-opp">{typeLabel}</span>
                       )}
                       {wasScanned && !isOpp && (
                         <span className="badge badge-gray badge-opp">Not relevant</span>
@@ -173,14 +190,19 @@ export default function InboxPage({ onNext, onEmailsReady }) {
                       <span>From: <strong>{selectedEmail.from}</strong></span>
                       <span>{selectedEmail.time}</span>
                     </div>
-                    {scanned && OPPORTUNITY_IDS.includes(selectedEmail.id) && (
+                    {scanned && (selectedEmail.aiData ? selectedEmail.aiData.isOpportunity : OPPORTUNITY_IDS.includes(selectedEmail.id)) && (
                       <div className="preview-opp-banner">
-                        ✅ Real Opportunity Detected — <strong>{OPPORTUNITY_TAG[selectedEmail.id]?.type}</strong>
+                        ✅ Real Opportunity Detected — <strong>{selectedEmail.aiData ? selectedEmail.aiData.type : OPPORTUNITY_TAG[selectedEmail.id]?.type}</strong>
+                        {selectedEmail.aiData && selectedEmail.aiData.reasoning && (
+                          <div style={{marginTop: '4px', fontSize: '0.75rem', fontWeight: 400}}>
+                            {selectedEmail.aiData.reasoning}
+                          </div>
+                        )}
                       </div>
                     )}
-                    {scanned && !OPPORTUNITY_IDS.includes(selectedEmail.id) && (
+                    {scanned && !(selectedEmail.aiData ? selectedEmail.aiData.isOpportunity : OPPORTUNITY_IDS.includes(selectedEmail.id)) && (
                       <div className="preview-skip-banner">
-                        ⛔ Filtered Out — Not an opportunity
+                        ⛔ Filtered Out — {selectedEmail.aiData ? selectedEmail.aiData.reasoning : "Not an opportunity"}
                       </div>
                     )}
                   </div>
