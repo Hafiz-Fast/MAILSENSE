@@ -28,9 +28,15 @@ export default function InboxPage({ onNext, onEmailsReady }) {
   const [running, setRunning] = useState(false);
   const [scanned, setScanned] = useState(false);
   const [scanIndex, setScanIndex] = useState(-1);
+  const [scannedEmailsWithData, setScannedEmailsWithData] = useState([]);
+  const [emailsBeingScanned, setEmailsBeingScanned] = useState([]);
 
   // The sliced set of demo emails based on emailCount
   const activeEmails = DEMO_EMAILS.slice(0, emailCount);
+  // Display: show emails being scanned (with progressively added aiData) or final scanned results
+  const displayEmails = emailsBeingScanned.length > 0 ? emailsBeingScanned : (scannedEmailsWithData.length > 0 ? scannedEmailsWithData : activeEmails);
+  // Count opportunities from display emails
+  const opportunitiesCount = displayEmails.filter(e => e.aiData?.isOpportunity).length;
 
   const addCustomEmail = () => {
     if (customEmails.length < 15) {
@@ -49,6 +55,7 @@ export default function InboxPage({ onNext, onEmailsReady }) {
   const runScan = async (emails) => {
     setRunning(true);
     setScanned(false);
+    setEmailsBeingScanned([...emails]); // Show all emails being scanned from start
     
     let scannedEmails = [];
 
@@ -62,12 +69,19 @@ export default function InboxPage({ onNext, onEmailsReady }) {
         // Fallback simulated delay
         await new Promise(r => setTimeout(r, 280));
       }
-      scannedEmails.push({ ...emails[i], aiData });
+      const emailWithData = { ...emails[i], aiData };
+      scannedEmails.push(emailWithData);
+      // Update the display with the new aiData attached to this email
+      setEmailsBeingScanned(prev => 
+        prev.map((e, idx) => idx === i ? emailWithData : e)
+      );
     }
     
     setScanIndex(-1);
     setRunning(false);
     setScanned(true);
+    setScannedEmailsWithData(scannedEmails); // Save final results for display
+    setEmailsBeingScanned([]); // Done scanning, display will now use scannedEmailsWithData
     onEmailsReady(scannedEmails);
   };
 
@@ -124,7 +138,7 @@ export default function InboxPage({ onNext, onEmailsReady }) {
         <div className="inbox-container">
           <div className="inbox-toolbar">
             <button className="btn-ghost" onClick={() => { handleModeSelect(null); }}>← Back</button>
-            <span className="inbox-count">{activeEmails.length} emails selected</span>
+            <span className="inbox-count">{displayEmails.length} emails selected</span>
             {!scanned && (
               <button className="btn-primary" id="btn-run-scan" onClick={handleDemoScan} disabled={running}>
                 {running ? <><span className="spinner"></span> Scanning…</> : <><span>🤖</span> Run AI Scan</>}
@@ -139,7 +153,7 @@ export default function InboxPage({ onNext, onEmailsReady }) {
 
           <div className="inbox-layout">
             <div className="email-list">
-              {activeEmails.map((email, i) => {
+              {displayEmails.map((email, i) => {
                 const aiData = email.aiData;
                 // Use AI classification
                 const isOpp = aiData?.isOpportunity ?? false;
@@ -219,15 +233,15 @@ export default function InboxPage({ onNext, onEmailsReady }) {
           {scanned && (
             <div className="scan-summary">
               <div className="scan-summary-item scan-success">
-                <span className="ss-num">{activeOpportunityIds.length}</span>
+                <span className="ss-num">{opportunitiesCount}</span>
                 <span className="ss-label">Real Opportunities Found</span>
               </div>
               <div className="scan-summary-item scan-muted">
-                <span className="ss-num">{activeEmails.length - activeOpportunityIds.length}</span>
+                <span className="ss-num">{displayEmails.length - opportunitiesCount}</span>
                 <span className="ss-label">Emails Filtered Out</span>
               </div>
               <div className="scan-summary-item scan-info">
-                <span className="ss-num">{activeEmails.length}</span>
+                <span className="ss-num">{displayEmails.length}</span>
                 <span className="ss-label">Total Emails Scanned</span>
               </div>
             </div>

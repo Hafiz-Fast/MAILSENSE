@@ -64,9 +64,12 @@ Extract the details and return ONLY a valid JSON object matching this schema:
                     print(f"✅ SUCCESS with {model_name}")
                     gemini_data = response.json()
                     result_text = gemini_data['candidates'][0]['content']['parts'][0]['text']
+                    print(f"📄 Raw Response: {result_text}")
                     if result_text.startswith("```json"):
                         result_text = result_text.strip("`").replace("json\n", "", 1).strip()
-                    return JsonResponse(json.loads(result_text), safe=False)
+                    parsed = json.loads(result_text)
+                    print(f"✓ Parsed JSON: {parsed}")
+                    return JsonResponse(parsed, safe=False)
                 else:
                     print(f"⚠️ {model_name} failed with status {response.status_code}")
                     last_error = response.text

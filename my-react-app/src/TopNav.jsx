@@ -19,9 +19,8 @@ export default function TopNav({ currentStep, onStepClick }) {
 
       <div className="nav-steps">
         {steps.map((step, i) => (
-          <>
+          <div key={step.num} style={{ display: 'flex', alignItems: 'center', gap: '0' }}>
             <button
-              key={step.num}
               className={`nav-step ${currentStep === step.num ? 'active' : ''} ${currentStep > step.num ? 'completed' : ''}`}
               onClick={() => currentStep > step.num && onStepClick(step.num)}
             >
@@ -30,8 +29,8 @@ export default function TopNav({ currentStep, onStepClick }) {
               </span>
               {step.label}
             </button>
-            {i < steps.length - 1 && <span key={`sep-${i}`} className="nav-step-sep">›</span>}
-          </>
+            {i < steps.length - 1 && <span className="nav-step-sep">›</span>}
+          </div>
         ))}
       </div>
 
