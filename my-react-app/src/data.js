@@ -19,6 +19,9 @@ export const DEMO_EMAILS = [
   },
 ];
 
+// Demo email IDs that represent opportunities before AI scan fallback.
+export const OPPORTUNITY_IDS = [2, 4];
+
 export const analyzeOpportunities = (emails, profile) => {
   // Only process emails that are opportunities
   const opportunities = emails.filter(e => e.aiData?.isOpportunity);
