@@ -46,7 +46,6 @@ def start_oauth(redirect_uri, state_token):
     flow = build_flow(redirect_uri, state=state_token)
     auth_url, state = flow.authorization_url(
         access_type="offline",
-        include_granted_scopes="true",
         prompt="consent",
     )
     return {"auth_url": auth_url, "state": state}
@@ -87,7 +86,12 @@ def save_token(user_key, token_json, gmail_address):
 
 def credentials_from_db(token_obj):
     ensure_google_deps()
-    creds = Credentials.from_authorized_user_info(token_obj.token_json, SCOPES)
+    stored_scopes = token_obj.token_json.get("scopes") if isinstance(token_obj.token_json, dict) else None
+    # Prefer token's stored scopes to avoid strict scope-change failures with previously granted permissions.
+    creds = Credentials.from_authorized_user_info(
+        token_obj.token_json,
+        scopes=stored_scopes or SCOPES,
+    )
     if creds and creds.expired and creds.refresh_token:
         creds.refresh(Request())
         token_obj.token_json = {

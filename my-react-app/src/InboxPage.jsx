@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { DEMO_EMAILS, OPPORTUNITY_IDS } from './data';
 import { classifyEmail } from './ai';
 import './InboxPage.css';
@@ -11,9 +11,73 @@ const OPPORTUNITY_TAG = {
   10: { type: 'Competition', color: 'badge-danger' },
 };
 
-export default function InboxPage({ onNext, onEmailsReady }) {
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
+const OPEN_CONNECT_INBOX_FLAG = 'OPEN_CONNECT_INBOX';
+
+const normalizeOpportunityType = (type = '') =>
+  String(type)
+    .split('_')
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+
+const formatContactInfo = (contact = {}) => {
+  const emails = Array.isArray(contact.emails) ? contact.emails : [];
+  const phones = Array.isArray(contact.phones) ? contact.phones : [];
+  return [...emails, ...phones].join(' | ');
+};
+
+const getPreviewText = (summary = '', body = '') => {
+  const source = summary || body || '';
+  return source.length > 120 ? `${source.slice(0, 117)}...` : source;
+};
+
+const buildFrontendEmailFromOpportunity = (opp, idx) => {
+  const type = normalizeOpportunityType(opp.opportunity_type || 'opportunity');
+  const summary = opp.summary_text || '';
+  const body = [summary, opp.deadline ? `Deadline: ${opp.deadline}` : '']
+    .filter(Boolean)
+    .join('\n\n');
+
+  return {
+    id: `g-${opp.message_id || idx}`,
+    from: opp.from || 'unknown@unknown.com',
+    subject: opp.subject || 'No subject',
+    preview: getPreviewText(summary, body),
+    time: opp.date || 'Recent',
+    body,
+    isRead: false,
+    _gmail: true,
+    aiData: {
+      isOpportunity: true,
+      type,
+      confidence: 95,
+      reasoning: 'Filtered as an opportunity by Gmail backend extraction.',
+      extracted: {
+        deadline: opp.deadline || 'Not specified',
+        eligibility: opp.eligibility_conditions || [],
+        requiredDocs: opp.required_documents || [],
+        contact: formatContactInfo(opp.application_contact_information),
+        applyLink: null,
+      },
+    },
+  };
+};
+
+const buildOAuthRedirectUri = () => {
+  const basePath = `${window.location.origin}${window.location.pathname}`;
+  return `${basePath}?gmail_oauth=1`;
+};
+
+export default function InboxPage({ onNext, onEmailsReady, gmailAuth, setGmailAuth }) {
   const [apiKey, setApiKey] = useState(() => import.meta.env.VITE_GEMINI_API_KEY || localStorage.getItem('GEMINI_API_KEY') || '');
   const [mode, setMode] = useState(null); // null | 'demo' | 'type' | 'inbox'
+  const [oauthStarting, setOauthStarting] = useState(false);
+  const [extracting, setExtracting] = useState(false);
+  const [connectError, setConnectError] = useState('');
+  const [connectSuccess, setConnectSuccess] = useState('');
+  const [gmailOpportunityEmails, setGmailOpportunityEmails] = useState([]);
+  const [gmailMeta, setGmailMeta] = useState(null);
 
   // Shared email count (1–15), default 10
   const [emailCount, setEmailCount] = useState(10);
@@ -29,9 +93,33 @@ export default function InboxPage({ onNext, onEmailsReady }) {
   const [scanned, setScanned] = useState(false);
   const [scanIndex, setScanIndex] = useState(-1);
 
-  // The sliced set of demo emails based on emailCount
-  const activeEmails = DEMO_EMAILS.slice(0, emailCount);
-  const activeOpportunityIds = activeEmails.map(e => e.id).filter(id => OPPORTUNITY_IDS.includes(id));
+  const usingGmailOpportunities = gmailOpportunityEmails.length > 0;
+
+  // The emails shown in Demo Inbox: Gmail opportunities if available, otherwise local demo emails.
+  const activeEmails = usingGmailOpportunities
+    ? gmailOpportunityEmails.slice(0, emailCount)
+    : DEMO_EMAILS.slice(0, emailCount);
+
+  const totalScannedCount = gmailMeta?.messages_scanned || activeEmails.length;
+  const opportunityCount = usingGmailOpportunities
+    ? activeEmails.length
+    : activeEmails.map((e) => e.id).filter((id) => OPPORTUNITY_IDS.includes(id)).length;
+  const filteredOutCount = Math.max(totalScannedCount - opportunityCount, 0);
+  const canProceedDemo = scanned || usingGmailOpportunities;
+
+  useEffect(() => {
+    if (gmailAuth?.connected && gmailAuth?.gmailAddress) {
+      setConnectSuccess(`Connected to ${gmailAuth.gmailAddress}`);
+      setConnectError('');
+    }
+  }, [gmailAuth]);
+
+  useEffect(() => {
+    if (sessionStorage.getItem(OPEN_CONNECT_INBOX_FLAG) === '1') {
+      setMode('inbox');
+      sessionStorage.removeItem(OPEN_CONNECT_INBOX_FLAG);
+    }
+  }, []);
 
   const addCustomEmail = () => {
     if (customEmails.length < 15) {
@@ -74,6 +162,89 @@ export default function InboxPage({ onNext, onEmailsReady }) {
 
   const handleDemoScan = () => runScan(activeEmails);
 
+  const handleConnectGmail = async () => {
+    setOauthStarting(true);
+    setConnectError('');
+    setConnectSuccess('');
+    setGmailAuth((prev) => ({ ...prev, busy: true, error: '' }));
+
+    try {
+      const response = await fetch(`${API_BASE}/api/gmail/oauth/start/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          redirect_uri: buildOAuthRedirectUri(),
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok || !data?.ok || !data?.auth_url) {
+        throw new Error(data?.error || `OAuth start failed with status ${response.status}`);
+      }
+
+      window.location.assign(data.auth_url);
+    } catch (err) {
+      const msg = err?.message || 'Unable to start Gmail OAuth flow.';
+      setConnectError(msg);
+      setGmailAuth((prev) => ({ ...prev, busy: false, error: msg }));
+      setOauthStarting(false);
+    }
+  };
+
+  const handleFetchGmailOpportunities = async () => {
+    setExtracting(true);
+    setConnectError('');
+    setConnectSuccess('');
+
+    try {
+      const response = await fetch(`${API_BASE}/api/gmail/opportunities/extract/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email_count: emailCount,
+          query: '',
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok || !data?.ok) {
+        throw new Error(data?.error || `Extract failed with status ${response.status}`);
+      }
+
+      const opportunities = data?.result?.opportunities || [];
+      const mapped = opportunities.map((opp, idx) => buildFrontendEmailFromOpportunity(opp, idx));
+
+      setGmailMeta(data?.result?.meta || null);
+      setGmailOpportunityEmails(mapped);
+      setScanned(true);
+      setScanIndex(-1);
+      setSelectedEmail(mapped[0] || null);
+      onEmailsReady(mapped);
+      setMode('demo');
+
+      setConnectSuccess(
+        mapped.length
+          ? `Loaded ${mapped.length} opportunity emails from Gmail.`
+          : 'No opportunity emails were found in the scanned set.'
+      );
+    } catch (err) {
+      const msg = err?.message || 'Failed to retrieve opportunity emails from Gmail.';
+      setConnectError(msg);
+      if (msg.toLowerCase().includes('connect oauth first')) {
+        setGmailAuth((prev) => ({
+          ...prev,
+          connected: false,
+        }));
+      }
+    } finally {
+      setExtracting(false);
+    }
+  };
+
   const handleCustomScan = () => {
     const valid = customEmails.filter(e => e.subject.trim() && e.body.trim());
     if (valid.length < 1) return alert('Please fill in at least 1 email.');
@@ -82,7 +253,9 @@ export default function InboxPage({ onNext, onEmailsReady }) {
   };
 
   const handleModeSelect = (m) => {
-    setScanned(false);
+    if (m !== 'demo' || !usingGmailOpportunities) {
+      setScanned(false);
+    }
     setSelectedEmail(null);
     setScanIndex(-1);
     setMode(m);
@@ -125,13 +298,17 @@ export default function InboxPage({ onNext, onEmailsReady }) {
         <div className="inbox-container">
           <div className="inbox-toolbar">
             <button className="btn-ghost" onClick={() => { handleModeSelect(null); }}>← Back</button>
-            <span className="inbox-count">{activeEmails.length} emails selected</span>
-            {!scanned && (
+            <span className="inbox-count">
+              {usingGmailOpportunities
+                ? `${activeEmails.length} opportunities from Gmail`
+                : `${activeEmails.length} emails selected`}
+            </span>
+            {!canProceedDemo && (
               <button className="btn-primary" id="btn-run-scan" onClick={handleDemoScan} disabled={running}>
                 {running ? <><span className="spinner"></span> Scanning…</> : <><span>🤖</span> Run AI Scan</>}
               </button>
             )}
-            {scanned && (
+            {canProceedDemo && (
               <button className="btn-primary" id="btn-next-profile" onClick={onNext}>
                 Next: My Profile →
               </button>
@@ -145,9 +322,12 @@ export default function InboxPage({ onNext, onEmailsReady }) {
                 // If we ran AI, use its determination. Otherwise fallback to hardcoded IDs.
                 const isOpp = aiData ? aiData.isOpportunity : OPPORTUNITY_IDS.includes(email.id);
                 const typeLabel = aiData ? aiData.type : OPPORTUNITY_TAG[email.id]?.type;
+                const senderName = (email.from || '').includes('@')
+                  ? email.from.split('@')[0]
+                  : (email.from || 'unknown');
                 
                 const isScanning = running && scanIndex === i;
-                const wasScanned = scanned || (running && scanIndex > i);
+                const wasScanned = canProceedDemo || (running && scanIndex > i);
                 return (
                   <div
                     key={email.id}
@@ -159,7 +339,7 @@ export default function InboxPage({ onNext, onEmailsReady }) {
                       <div className="email-avatar">{email.from.charAt(0).toUpperCase()}</div>
                       <div className="email-info">
                         <div className="email-from-row">
-                          <span className="email-from">{email.from.split('@')[0]}</span>
+                          <span className="email-from">{senderName}</span>
                           <span className="email-time">{email.time}</span>
                         </div>
                         <div className="email-subject">{email.subject}</div>
@@ -190,7 +370,7 @@ export default function InboxPage({ onNext, onEmailsReady }) {
                       <span>From: <strong>{selectedEmail.from}</strong></span>
                       <span>{selectedEmail.time}</span>
                     </div>
-                    {scanned && (selectedEmail.aiData ? selectedEmail.aiData.isOpportunity : OPPORTUNITY_IDS.includes(selectedEmail.id)) && (
+                    {canProceedDemo && (selectedEmail.aiData ? selectedEmail.aiData.isOpportunity : OPPORTUNITY_IDS.includes(selectedEmail.id)) && (
                       <div className="preview-opp-banner">
                         ✅ Real Opportunity Detected — <strong>{selectedEmail.aiData ? selectedEmail.aiData.type : OPPORTUNITY_TAG[selectedEmail.id]?.type}</strong>
                         {selectedEmail.aiData && selectedEmail.aiData.reasoning && (
@@ -200,7 +380,7 @@ export default function InboxPage({ onNext, onEmailsReady }) {
                         )}
                       </div>
                     )}
-                    {scanned && !(selectedEmail.aiData ? selectedEmail.aiData.isOpportunity : OPPORTUNITY_IDS.includes(selectedEmail.id)) && (
+                    {canProceedDemo && !(selectedEmail.aiData ? selectedEmail.aiData.isOpportunity : OPPORTUNITY_IDS.includes(selectedEmail.id)) && (
                       <div className="preview-skip-banner">
                         ⛔ Filtered Out — {selectedEmail.aiData ? selectedEmail.aiData.reasoning : "Not an opportunity"}
                       </div>
@@ -217,18 +397,18 @@ export default function InboxPage({ onNext, onEmailsReady }) {
             </div>
           </div>
 
-          {scanned && (
+          {canProceedDemo && (
             <div className="scan-summary">
               <div className="scan-summary-item scan-success">
-                <span className="ss-num">{activeOpportunityIds.length}</span>
+                <span className="ss-num">{opportunityCount}</span>
                 <span className="ss-label">Real Opportunities Found</span>
               </div>
               <div className="scan-summary-item scan-muted">
-                <span className="ss-num">{activeEmails.length - activeOpportunityIds.length}</span>
+                <span className="ss-num">{filteredOutCount}</span>
                 <span className="ss-label">Emails Filtered Out</span>
               </div>
               <div className="scan-summary-item scan-info">
-                <span className="ss-num">{activeEmails.length}</span>
+                <span className="ss-num">{totalScannedCount}</span>
                 <span className="ss-label">Total Emails Scanned</span>
               </div>
             </div>
@@ -310,7 +490,18 @@ export default function InboxPage({ onNext, onEmailsReady }) {
 
           <div className="connect-icon">📬</div>
           <h2>Connect Your Inbox</h2>
-          <p>OAuth inbox integration is coming soon. While you wait, you can configure how many emails the demo scanner will pull.</p>
+          <p>Connect Gmail with OAuth, then retrieve filtered opportunity emails directly from backend extraction.</p>
+
+          {(gmailAuth?.busy || oauthStarting) && (
+            <div className="preview-skip-banner">Starting Gmail OAuth...</div>
+          )}
+          {gmailAuth?.connected && gmailAuth?.gmailAddress && (
+            <div className="preview-opp-banner">Connected Gmail: <strong>{gmailAuth.gmailAddress}</strong></div>
+          )}
+          {(connectError || gmailAuth?.error) && (
+            <div className="preview-skip-banner">{connectError || gmailAuth.error}</div>
+          )}
+          {connectSuccess && <div className="preview-opp-banner">{connectSuccess}</div>}
 
           {/* Email Count — mirrored here in Connect Inbox */}
           <div className="connect-count-block">
@@ -336,17 +527,31 @@ export default function InboxPage({ onNext, onEmailsReady }) {
               <span className="slider-edge">15</span>
             </div>
             <p className="connect-count-hint">
-              This will also update the Demo Inbox to scan exactly <strong>{emailCount}</strong> emails.
+              Backend will scan up to <strong>{emailCount}</strong> Gmail emails before showing filtered opportunities.
             </p>
           </div>
 
           <div className="connect-providers">
-            <div className="connect-provider disabled"><span>G</span> Gmail — Coming Soon</div>
-            <div className="connect-provider disabled"><span>O</span> Outlook — Coming Soon</div>
+            <button
+              className="connect-provider"
+              onClick={handleConnectGmail}
+              disabled={oauthStarting || gmailAuth?.busy}
+            >
+              <span>G</span>
+              {oauthStarting || gmailAuth?.busy ? ' Starting OAuth...' : ' Connect Gmail'}
+            </button>
+            <button
+              className="connect-provider"
+              onClick={handleFetchGmailOpportunities}
+              disabled={extracting || gmailAuth?.busy || oauthStarting}
+            >
+              <span>📊</span>
+              {extracting ? ' Retrieving emails...' : ' Emails to scan'}
+            </button>
           </div>
 
           <button className="btn-secondary" onClick={() => handleModeSelect('demo')} style={{ marginTop: '0.5rem' }}>
-            → Use Demo Inbox with {emailCount} Emails
+            → Use Demo Inbox
           </button>
         </div>
       )}
