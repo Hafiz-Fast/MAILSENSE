@@ -1,9 +1,44 @@
 import { useEffect, useState } from 'react';
+import { motion } from 'framer-motion';
 import TopNav from './TopNav';
 import InboxPage from './InboxPage';
 import ProfilePage from './ProfilePage';
 import ResultsPage from './ResultsPage';
 import './App.css';
+
+const AnimatedBackground = () => {
+  return (
+    <div className="animated-bg">
+      <motion.div
+        className="bg-blob blob-1"
+        animate={{
+          x: [0, 30, -20, 0],
+          y: [0, -40, 20, 0],
+          scale: [1, 1.1, 0.9, 1]
+        }}
+        transition={{ duration: 15, repeat: Infinity, ease: 'linear' }}
+      />
+      <motion.div
+        className="bg-blob blob-2"
+        animate={{
+          x: [0, -40, 30, 0],
+          y: [0, 30, -20, 0],
+          scale: [1, 0.9, 1.1, 1]
+        }}
+        transition={{ duration: 18, repeat: Infinity, ease: 'linear' }}
+      />
+      <motion.div
+        className="bg-blob blob-3"
+        animate={{
+          x: [0, 20, -30, 0],
+          y: [0, 50, -10, 0],
+          scale: [1, 1.2, 0.8, 1]
+        }}
+        transition={{ duration: 20, repeat: Infinity, ease: 'linear' }}
+      />
+    </div>
+  );
+};
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
 const CALLBACK_GUARD_PREFIX = 'GMAIL_OAUTH_CALLBACK_PROCESSED';
@@ -14,8 +49,8 @@ export default function App() {
   const [emails, setEmails] = useState([]);
   const [profile, setProfile] = useState(null);
   const [gmailAuth, setGmailAuth] = useState({
-    connected: Boolean(localStorage.getItem('GMAIL_CONNECTED_EMAIL')),
-    gmailAddress: localStorage.getItem('GMAIL_CONNECTED_EMAIL') || '',
+    connected: false,
+    gmailAddress: '',
     busy: false,
     error: '',
   });
@@ -58,9 +93,6 @@ export default function App() {
         }
 
         const gmailAddress = data.gmail_address || '';
-        if (gmailAddress) {
-          localStorage.setItem('GMAIL_CONNECTED_EMAIL', gmailAddress);
-        }
 
         setGmailAuth({
           connected: true,
@@ -86,6 +118,7 @@ export default function App() {
 
   return (
     <div className="app">
+      <AnimatedBackground />
       <TopNav currentStep={step} onStepClick={goTo} />
 
       {/* Step 1 — Profile first */}
@@ -105,6 +138,7 @@ export default function App() {
           onEmailsReady={(e) => setEmails(e)}
           gmailAuth={gmailAuth}
           setGmailAuth={setGmailAuth}
+          profile={profile}
         />
       )}
 

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { motion } from 'framer-motion';
 import './ProfilePage.css';
 
 const OPPORTUNITY_TYPES = [
@@ -15,16 +16,16 @@ const PROGRAMS = [
 
 export default function ProfilePage({ onNext, onBack, onProfileSave }) {
   const [profile, setProfile] = useState({
-    name: 'Abdullah Khan',
-    degree: 'BS',
-    program: 'Computer Science',
-    semester: '6',
-    cgpa: '3.5',
-    skills: 'Python, React, JavaScript',
-    preferredTypes: ['Internship', 'Scholarship'],
-    financialNeed: true,
-    locationPref: 'Lahore',
-    experience: 'Built a portfolio website using React.',
+    name: '',
+    degree: '',
+    program: '',
+    semester: '',
+    cgpa: '',
+    skills: '',
+    preferredTypes: [],
+    financialNeed: false,
+    locationPref: '',
+    experience: '',
   });
 
   const [errors, setErrors] = useState({});
@@ -58,13 +59,20 @@ export default function ProfilePage({ onNext, onBack, onProfileSave }) {
 
   const handleSubmit = () => {
     const e = validate();
-    if (Object.keys(e).length > 0) { setErrors(e); return; }
+    const hasErrors = Object.values(e).some(Boolean);
+    if (hasErrors) { setErrors(e); return; }
     onProfileSave(profile);
     onNext();
   };
 
   return (
-    <div className="page-wrapper">
+    <motion.div 
+      initial={{ opacity: 0, y: 20 }} 
+      animate={{ opacity: 1, y: 0 }} 
+      exit={{ opacity: 0, y: -20 }} 
+      transition={{ duration: 0.4 }}
+      className="page-wrapper"
+    >
       <div className="page-header">
         <h1>🎓 Your Student Profile</h1>
         <p>Help the AI personalize which opportunities fit you best. All fields are used for matching — the more you fill in, the better.</p>
@@ -258,6 +266,6 @@ export default function ProfilePage({ onNext, onBack, onProfileSave }) {
           Next: Scan Inbox 🔍
         </button>
       </div>
-    </div>
+    </motion.div>
   );
 }

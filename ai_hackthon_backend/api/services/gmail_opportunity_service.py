@@ -34,6 +34,7 @@ def extract_opportunities(user_key, email_count, query="", mailbox="inbox"):
     message_refs = list_resp.get("messages", [])
 
     opportunities = []
+    fetched_emails = []
     scanned = 0
 
     for msg_ref in message_refs:
@@ -44,6 +45,21 @@ def extract_opportunities(user_key, email_count, query="", mailbox="inbox"):
         ).execute()
         parsed = parse_message(raw)
         scanned += 1
+
+        fetched_emails.append(
+            {
+                "message_id": parsed["message_id"],
+                "thread_id": parsed["thread_id"],
+                "subject": parsed["subject"],
+                "date": parsed["date"],
+                "from": parsed["from"],
+                "to": parsed["to"],
+                "cc": parsed["cc"],
+                "snippet": parsed["snippet"],
+                "body": parsed["body"],
+                "labels": parsed["labels"],
+            }
+        )
 
         thread = service.users().threads().get(
             userId="me",
@@ -80,5 +96,6 @@ def extract_opportunities(user_key, email_count, query="", mailbox="inbox"):
             "generated_at": datetime.utcnow().isoformat() + "Z",
             "schema_version": "1.0",
         },
+        "emails": fetched_emails,
         "opportunities": opportunities,
     }

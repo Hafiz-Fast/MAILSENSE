@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
 import { DEMO_EMAILS, OPPORTUNITY_IDS } from './data';
-import { classifyEmail } from './ai';
+import { classifyEmail, classifyEmailHeuristic } from './ai';
+import { motion } from 'framer-motion';
+import Skeleton from 'react-loading-skeleton';
+import 'react-loading-skeleton/dist/skeleton.css';
 import './InboxPage.css';
 
 const OPPORTUNITY_TAG = {
@@ -14,28 +17,29 @@ const OPPORTUNITY_TAG = {
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
 const OPEN_CONNECT_INBOX_FLAG = 'OPEN_CONNECT_INBOX';
 
-const normalizeOpportunityType = (type = '') =>
-  String(type)
-    .split('_')
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(' ');
-
-const formatContactInfo = (contact = {}) => {
-  const emails = Array.isArray(contact.emails) ? contact.emails : [];
-  const phones = Array.isArray(contact.phones) ? contact.phones : [];
-  return [...emails, ...phones].join(' | ');
-};
-
 const getPreviewText = (summary = '', body = '') => {
   const source = summary || body || '';
   return source.length > 120 ? `${source.slice(0, 117)}...` : source;
 };
 
-const buildFrontendEmailFromOpportunity = (opp, idx) => {
-  const type = normalizeOpportunityType(opp.opportunity_type || 'opportunity');
-  const summary = opp.summary_text || '';
-  const body = [summary, opp.deadline ? `Deadline: ${opp.deadline}` : '']
+const buildFrontendEmailFromFetchedEmail = (email, idx) => {
+  const body = email.body || email.snippet || '';
+  const previewSource = email.snippet || body;
+
+  return {
+    id: `g-${email.message_id || idx}`,
+    from: email.from || 'unknown@unknown.com',
+    subject: email.subject || 'No subject',
+    preview: getPreviewText(previewSource, body),
+    time: email.date || 'Recent',
+    body,
+    isRead: false,
+    _gmail: true,
+  };
+};
+
+const buildFrontendEmailFromOpportunityFallback = (opp, idx) => {
+  const body = [opp.summary_text || '', opp.deadline ? `Deadline: ${opp.deadline}` : '']
     .filter(Boolean)
     .join('\n\n');
 
@@ -43,24 +47,11 @@ const buildFrontendEmailFromOpportunity = (opp, idx) => {
     id: `g-${opp.message_id || idx}`,
     from: opp.from || 'unknown@unknown.com',
     subject: opp.subject || 'No subject',
-    preview: getPreviewText(summary, body),
+    preview: getPreviewText(opp.summary_text || '', body),
     time: opp.date || 'Recent',
     body,
     isRead: false,
     _gmail: true,
-    aiData: {
-      isOpportunity: true,
-      type,
-      confidence: 95,
-      reasoning: 'Filtered as an opportunity by Gmail backend extraction.',
-      extracted: {
-        deadline: opp.deadline || 'Not specified',
-        eligibility: opp.eligibility_conditions || [],
-        requiredDocs: opp.required_documents || [],
-        contact: formatContactInfo(opp.application_contact_information),
-        applyLink: null,
-      },
-    },
   };
 };
 
@@ -75,15 +66,15 @@ const mailboxLabel = (mailbox) => {
   return 'Inbox';
 };
 
-export default function InboxPage({ onNext, onEmailsReady, gmailAuth, setGmailAuth }) {
-  const [apiKey, setApiKey] = useState(() => import.meta.env.VITE_GEMINI_API_KEY || localStorage.getItem('GEMINI_API_KEY') || '');
+export default function InboxPage({ onNext, onEmailsReady, gmailAuth, setGmailAuth, profile }) {
+  const [scanMethod, setScanMethod] = useState(null); // null | 'ai' | 'heuristic'
   const [mode, setMode] = useState(null); // null | 'demo' | 'type' | 'inbox'
   const [oauthStarting, setOauthStarting] = useState(false);
   const [extracting, setExtracting] = useState(false);
   const [extractingMailbox, setExtractingMailbox] = useState(null);
   const [connectError, setConnectError] = useState('');
   const [connectSuccess, setConnectSuccess] = useState('');
-  const [gmailOpportunityEmails, setGmailOpportunityEmails] = useState([]);
+  const [gmailFetchedEmails, setGmailFetchedEmails] = useState([]);
   const [gmailMeta, setGmailMeta] = useState(null);
 
   // Shared email count (1–15), default 10
@@ -102,12 +93,12 @@ export default function InboxPage({ onNext, onEmailsReady, gmailAuth, setGmailAu
   const [scannedEmailsWithData, setScannedEmailsWithData] = useState([]);
   const [emailsBeingScanned, setEmailsBeingScanned] = useState([]);
 
-  const usingGmailOpportunities = gmailOpportunityEmails.length > 0;
+  const usingGmailFetchedEmails = gmailFetchedEmails.length > 0;
   const canRetrieveFromGmail = Boolean(gmailAuth?.connected) && !gmailAuth?.busy && !oauthStarting;
 
-  // The emails shown in Demo Inbox: Gmail opportunities if available, otherwise local demo emails.
-  const activeEmails = usingGmailOpportunities
-    ? gmailOpportunityEmails.slice(0, emailCount)
+  // The emails shown in Demo Inbox: retrieved Gmail emails if available, otherwise local demo emails.
+  const activeEmails = usingGmailFetchedEmails
+    ? gmailFetchedEmails.slice(0, emailCount)
     : DEMO_EMAILS.slice(0, emailCount);
 
   // Display: show emails being scanned (with progressively added aiData) or final scanned results.
@@ -115,15 +106,15 @@ export default function InboxPage({ onNext, onEmailsReady, gmailAuth, setGmailAu
     ? emailsBeingScanned
     : (scannedEmailsWithData.length > 0 ? scannedEmailsWithData : activeEmails);
 
-  // If we already have aiData (from Gmail extraction or completed AI scan), trust it.
+  // If we already have aiData (from completed AI scan), trust it.
   const opportunityCount = displayEmails.filter(
     (e) => (e.aiData ? e.aiData.isOpportunity : OPPORTUNITY_IDS.includes(e.id))
   ).length;
-  const totalScannedCount = usingGmailOpportunities
-    ? (gmailMeta?.messages_scanned || displayEmails.length)
-    : displayEmails.length;
+  const totalScannedCount = scanned
+    ? (gmailMeta?.messages_scanned || scannedEmailsWithData.length || displayEmails.length)
+    : 0;
   const filteredOutCount = Math.max(totalScannedCount - opportunityCount, 0);
-  const canProceedDemo = scanned || usingGmailOpportunities;
+  const canProceedDemo = scanned;
 
   useEffect(() => {
     if (gmailAuth?.connected && gmailAuth?.gmailAddress) {
@@ -153,22 +144,21 @@ export default function InboxPage({ onNext, onEmailsReady, gmailAuth, setGmailAu
     setCustomEmails(prev => prev.map(e => e.id === id ? { ...e, [field]: value } : e));
   };
 
-  const runScan = async (emails) => {
+  const runScan = async (emails, method = 'ai') => {
     setRunning(true);
     setScanned(false);
+    setScanMethod(method);
     setEmailsBeingScanned([...emails]); // Show all emails being scanned from start
     
     let scannedEmails = [];
 
     for (let i = 0; i < emails.length; i++) {
       setScanIndex(i);
-      let aiData = null;
-      if (apiKey) {
-        // Use real AI
-        aiData = await classifyEmail(emails[i], apiKey);
+      let aiData;
+      if (method === 'heuristic') {
+        aiData = await classifyEmailHeuristic(emails[i], profile);
       } else {
-        // Fallback simulated delay
-        await new Promise(r => setTimeout(r, 280));
+        aiData = await classifyEmail(emails[i]);
       }
       const emailWithData = { ...emails[i], aiData };
       scannedEmails.push(emailWithData);
@@ -186,7 +176,8 @@ export default function InboxPage({ onNext, onEmailsReady, gmailAuth, setGmailAu
     onEmailsReady(scannedEmails);
   };
 
-  const handleDemoScan = () => runScan(activeEmails);
+  const handleDemoScanAI = () => runScan(activeEmails, 'ai');
+  const handleDemoScanHeuristic = () => runScan(activeEmails, 'heuristic');
 
   const handleConnectGmail = async () => {
     setOauthStarting(true);
@@ -250,21 +241,25 @@ export default function InboxPage({ onNext, onEmailsReady, gmailAuth, setGmailAu
         throw new Error(data?.error || `Extract failed with status ${response.status}`);
       }
 
+      const fetchedEmails = data?.result?.emails || [];
       const opportunities = data?.result?.opportunities || [];
-      const mapped = opportunities.map((opp, idx) => buildFrontendEmailFromOpportunity(opp, idx));
+      const mapped = fetchedEmails.length
+        ? fetchedEmails.map((email, idx) => buildFrontendEmailFromFetchedEmail(email, idx))
+        : opportunities.map((opp, idx) => buildFrontendEmailFromOpportunityFallback(opp, idx));
 
       setGmailMeta(data?.result?.meta || null);
-      setGmailOpportunityEmails(mapped);
-      setScanned(true);
+      setGmailFetchedEmails(mapped);
+      setScanned(false);
+      setScannedEmailsWithData([]);
+      setEmailsBeingScanned([]);
       setScanIndex(-1);
       setSelectedEmail(mapped[0] || null);
-      onEmailsReady(mapped);
       setMode('demo');
 
       setConnectSuccess(
         mapped.length
-          ? `Loaded ${mapped.length} opportunity emails from Gmail ${mailboxLabel(mailbox)}.`
-          : `No opportunity emails were found in Gmail ${mailboxLabel(mailbox)}.`
+          ? `Loaded ${mapped.length} emails from Gmail ${mailboxLabel(mailbox)}. Choose Run AI Scan or Run Heuristic Scan.`
+          : `No emails were found in Gmail ${mailboxLabel(mailbox)} for this query.`
       );
     } catch (err) {
       const msg = err?.message || 'Failed to retrieve opportunity emails from Gmail.';
@@ -289,7 +284,7 @@ export default function InboxPage({ onNext, onEmailsReady, gmailAuth, setGmailAu
   };
 
   const handleModeSelect = (m) => {
-    if (m !== 'demo' || !usingGmailOpportunities) {
+    if (m !== 'demo' || !usingGmailFetchedEmails) {
       setScanned(false);
     }
     setSelectedEmail(null);
@@ -298,7 +293,13 @@ export default function InboxPage({ onNext, onEmailsReady, gmailAuth, setGmailAu
   };
 
   return (
-    <div className="page-wrapper">
+    <motion.div 
+      initial={{ opacity: 0, x: 20 }} 
+      animate={{ opacity: 1, x: 0 }} 
+      exit={{ opacity: 0, x: -20 }} 
+      transition={{ duration: 0.4 }}
+      className="page-wrapper"
+    >
       <div className="page-header">
         <h1>📬 Email Inbox Scanner</h1>
         <p>Paste your emails or use our demo inbox — the AI will detect real opportunities in seconds.</p>
@@ -335,14 +336,19 @@ export default function InboxPage({ onNext, onEmailsReady, gmailAuth, setGmailAu
           <div className="inbox-toolbar">
             <button className="btn-ghost" onClick={() => { handleModeSelect(null); }}>← Back</button>
             <span className="inbox-count">
-              {usingGmailOpportunities
-                ? `${activeEmails.length} opportunities from Gmail`
+              {usingGmailFetchedEmails
+                ? `${activeEmails.length} emails retrieved from Gmail`
                 : `${activeEmails.length} emails selected`}
             </span>
             {!canProceedDemo && (
-              <button className="btn-primary" id="btn-run-scan" onClick={handleDemoScan} disabled={running}>
-                {running ? <><span className="spinner"></span> Scanning…</> : <><span>🤖</span> Run AI Scan</>}
-              </button>
+              <>
+                <button className="btn-primary" id="btn-run-scan-ai" onClick={handleDemoScanAI} disabled={running}>
+                  {running ? <><span className="spinner"></span> Scanning…</> : <><span>🤖</span> Run AI Scan</>}
+                </button>
+                <button className="btn-secondary" id="btn-run-scan-heuristic" onClick={handleDemoScanHeuristic} disabled={running}>
+                  {running ? <><span className="spinner"></span> Scanning…</> : <><span>🧭</span> Run Heuristic Scan</>}
+                </button>
+              </>
             )}
             {canProceedDemo && (
               <button className="btn-primary" id="btn-next-profile" onClick={onNext}>
@@ -398,7 +404,14 @@ export default function InboxPage({ onNext, onEmailsReady, gmailAuth, setGmailAu
 
             {/* Email Preview */}
             <div className="email-preview-pane">
-              {selectedEmail ? (
+              {running && !selectedEmail ? (
+                <div style={{ padding: '2rem' }}>
+                  <Skeleton baseColor="var(--panel-bg)" highlightColor="var(--border-color)" count={1} height={40} style={{ marginBottom: '1rem' }} />
+                  <Skeleton baseColor="var(--panel-bg)" highlightColor="var(--border-color)" count={2} height={20} style={{ marginBottom: '0.5rem' }} />
+                  <br />
+                  <Skeleton baseColor="var(--panel-bg)" highlightColor="var(--border-color)" count={15} height={16} style={{ marginBottom: '0.5rem' }} />
+                </div>
+              ) : selectedEmail ? (
                 <div className="preview-content">
                   <div className="preview-header">
                     <h3>{selectedEmail.subject}</h3>
@@ -432,6 +445,12 @@ export default function InboxPage({ onNext, onEmailsReady, gmailAuth, setGmailAu
               )}
             </div>
           </div>
+
+          {canProceedDemo && (
+            <div className="connect-count-hint" style={{ margin: '-0.25rem 0 0.25rem 0' }}>
+              Scan method used: <strong>{scanMethod === 'heuristic' ? 'Heuristic (Rule-Based)' : 'AI LLM Scan'}</strong>
+            </div>
+          )}
 
           {canProceedDemo && (
             <div className="scan-summary">
@@ -526,7 +545,7 @@ export default function InboxPage({ onNext, onEmailsReady, gmailAuth, setGmailAu
 
           <div className="connect-icon">📬</div>
           <h2>Connect Your Inbox</h2>
-          <p>Connect Gmail with OAuth, then retrieve filtered opportunity emails directly from backend extraction.</p>
+          <p>Connect Gmail with OAuth, retrieve emails first, then run AI Scan to detect opportunities.</p>
 
           {(gmailAuth?.busy || oauthStarting) && (
             <div className="preview-skip-banner">Starting Gmail OAuth...</div>
@@ -563,7 +582,7 @@ export default function InboxPage({ onNext, onEmailsReady, gmailAuth, setGmailAu
               <span className="slider-edge">15</span>
             </div>
             <p className="connect-count-hint">
-              Backend will scan up to <strong>{emailCount}</strong> Gmail emails before showing filtered opportunities.
+              Gmail retrieval will fetch up to <strong>{emailCount}</strong> emails. You can run AI scan after previewing them.
             </p>
           </div>
 
@@ -613,6 +632,6 @@ export default function InboxPage({ onNext, onEmailsReady, gmailAuth, setGmailAu
           </button>
         </div>
       )}
-    </div>
+    </motion.div>
   );
 }

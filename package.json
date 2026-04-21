@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "framer-motion": "^12.38.0",
+    "react-loading-skeleton": "^3.5.0"
+  }
+}

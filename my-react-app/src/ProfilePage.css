@@ -97,14 +97,19 @@
 .form-field select,
 .form-field textarea {
   padding: 0.71875rem 0.9375rem;
-  border: 1.5px solid var(--gray-200);
+  border: 1.5px solid rgba(209, 255, 39, 0.2);
   border-radius: var(--radius);
   font-size: 0.9375rem;
   font-family: inherit;
-  color: var(--gray-900);
-  background: var(--gray-50);
+  color: var(--text-main);
+  background: rgba(209, 255, 39, 0.04);
   transition: var(--transition);
   resize: vertical;
+}
+
+.form-field select option {
+  background: var(--bg-color);
+  color: var(--text-main);
 }
 
 .form-field input:focus,
@@ -112,7 +117,7 @@
 .form-field textarea:focus {
   outline: none;
   border-color: var(--primary);
-  background: white;
+  background: var(--panel-bg);
   box-shadow: var(--shadow-glow);
 }
 

@@ -8,4 +8,5 @@ urlpatterns = [
     path('gmail/opportunities/extract/', views.extract_gmail_opportunities),
     path('gmail/opportunities/jobs/<int:job_id>/', views.extraction_job_status),
     path('classify_email/', views.classify_email, name='classify_email'),
+    path('classify_email/heuristic/', views.classify_email_heuristic, name='classify_email_heuristic'),
 ]

@@ -1,8 +1,11 @@
 import { useState, useEffect } from 'react';
 import { analyzeOpportunities } from './data';
+import { motion, AnimatePresence } from 'framer-motion';
+import Skeleton, { SkeletonTheme } from 'react-loading-skeleton';
+import 'react-loading-skeleton/dist/skeleton.css';
 import './ResultsPage.css';
 
-const RANK_COLORS = ['#f59e0b', '#94a3b8', '#cd7f32'];
+const RANK_COLORS = ['#D1FF27', '#94a3b8', '#cd7f32'];
 const RANK_LABELS = ['🥇 #1 Top Pick', '🥈 #2 Strong Match', '🥉 #3 Good Fit'];
 
 const TYPE_ICONS = {
@@ -44,29 +47,55 @@ export default function ResultsPage({ emails, profile, onBack }) {
 
   if (loading) {
     return (
-      <div className="page-wrapper">
-        <div className="ai-loading">
-          <div className="ai-loading-icon">🤖</div>
-          <h2>Analyzing Opportunities…</h2>
-          <p>Matching your profile against {emails.length} detected opportunities</p>
-          <div className="loading-steps">
-            {['Extracting fields from emails', 'Scoring against your CGPA & skills', 'Ranking by relevance & deadline'].map((s, i) => (
-              <div key={i} className="loading-step" style={{ animationDelay: `${i * 0.4}s` }}>
-                <span className="loading-dot"></span>
-                {s}
+      <SkeletonTheme baseColor="#1a211a" highlightColor="#273327">
+        <motion.div 
+          className="page-wrapper"
+          initial={{ opacity: 0 }} 
+          animate={{ opacity: 1 }} 
+          exit={{ opacity: 0 }}
+        >
+          <div className="page-header">
+            <Skeleton width="60%" height={40} style={{ marginBottom: '1rem' }} />
+            <Skeleton width="80%" height={24} />
+          </div>
+
+          <div className="results-summary">
+            {[1, 2, 3, 4].map(i => (
+              <div key={i} className="rs-item" style={{background: 'transparent', border: '1px solid var(--border-color)', padding: '1rem', borderRadius: '12px'}}>
+                <Skeleton width="40%" height={32} style={{ marginBottom: '0.5rem' }} />
+                <Skeleton width="70%" height={16} />
               </div>
             ))}
           </div>
-          <div className="progress-bar">
-            <div className="progress-fill"></div>
+
+          <div className="results-list">
+            {[1, 2, 3].map(i => (
+              <div key={i} className="result-card">
+                <div className="rc-header">
+                  <div className="rc-header-left" style={{width: '100%'}}>
+                    <Skeleton circle width={40} height={40} />
+                    <div style={{ marginLeft: '1rem', width: '100%' }}>
+                      <Skeleton width="30%" height={20} style={{ marginBottom: '0.5rem' }} />
+                      <Skeleton width="80%" height={24} style={{ marginBottom: '0.5rem' }} />
+                      <Skeleton width="50%" height={16} />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
-        </div>
-      </div>
+        </motion.div>
+      </SkeletonTheme>
     );
   }
 
   return (
-    <div className="page-wrapper">
+    <motion.div 
+      className="page-wrapper"
+      initial={{ opacity: 0, scale: 0.95 }} 
+      animate={{ opacity: 1, scale: 1 }} 
+      transition={{ duration: 0.4 }}
+    >
       <div className="page-header">
         <h1>🎯 Your Opportunity Report</h1>
         <p>
@@ -244,6 +273,6 @@ export default function ResultsPage({ emails, profile, onBack }) {
           🔄 Start Over with New Emails
         </button>
       </div>
-    </div>
+    </motion.div>
   );
 }
