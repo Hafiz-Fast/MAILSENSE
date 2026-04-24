@@ -3,6 +3,7 @@ from . import views
 
 urlpatterns = [
     path('', views.home),
+    path('health/', views.db_health, name='db_health'),
     path('gmail/oauth/start/', views.gmail_oauth_start),
     path('gmail/oauth/callback/', views.gmail_oauth_callback),
     path('gmail/opportunities/extract/', views.extract_gmail_opportunities),

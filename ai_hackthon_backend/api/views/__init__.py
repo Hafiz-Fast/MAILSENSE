@@ -9,6 +9,7 @@ from .gmail_opportunity_views import (
     extract_gmail_opportunities,
     extraction_job_status,
 )
+from .health_views import db_health
 __all__ = [
     "home",
     "classify_email",
@@ -17,4 +18,5 @@ __all__ = [
     "gmail_oauth_callback",
     "extract_gmail_opportunities",
     "extraction_job_status",
+    "db_health",
 ]

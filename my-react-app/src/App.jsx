@@ -119,7 +119,7 @@ export default function App() {
   return (
     <div className="app">
       <AnimatedBackground />
-      <TopNav currentStep={step} onStepClick={goTo} />
+      {step !== 1 && <TopNav currentStep={step} onStepClick={goTo} />}
 
       {/* Step 1 — Profile first */}
       {step === 1 && (
